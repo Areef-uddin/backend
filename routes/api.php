@@ -97,7 +97,6 @@ Route::prefix('v1')->group(function () {
         Route::get('/payslips/{id}/download', [PayrollController::class, 'downloadPayslip']);
 
         // Starforce Employee Joining Form (Mobile & Admin)
-        Route::get('/joining/options', [JoiningRequestController::class, 'options']);
         Route::get('/joining/my-status', [JoiningRequestController::class, 'myStatus']);
         Route::post('/joining/submit', [JoiningRequestController::class, 'store']);
         Route::get('/admin/joining-requests', [JoiningRequestController::class, 'adminIndex']);
