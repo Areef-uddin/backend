@@ -84,30 +84,25 @@ class JoiningRequestController extends Controller
                     'message' => 'An account with this email already exists. Please verify your password.',
                 ], 422);
             }
+            if ($request->filled('photo_url')) {
+                $user->update(['avatar' => $request->photo_url]);
+            }
         } else {
             $user = User::create([
                 'name' => $name,
                 'email' => $email,
                 'phone' => $phone,
                 'password' => Hash::make($request->password),
+                'avatar' => $request->input('photo_url'),
                 'status' => 'active',
             ]);
         }
 
-        $empRole = Role::where('name', 'Employee')->orWhere('name', 'employee')->first();
-        if (!$empRole) {
-            $empRole = Role::firstOrCreate(
-                ['name' => 'Employee'],
-                ['display_name' => 'Employee', 'description' => 'Employee role']
-            );
-        }
-        if ($empRole) {
-            $user->roles()->syncWithoutDetaching([$empRole->id]);
-        }
-
-        if ($request->filled('photo_url')) {
-            $user->update(['avatar' => $request->photo_url]);
-        }
+        $empRole = Role::firstOrCreate(
+            ['name' => 'Employee'],
+            ['display_name' => 'Employee', 'description' => 'Employee role']
+        );
+        $user->roles()->syncWithoutDetaching([$empRole->id]);
 
         $token = $user->createToken('employee-mobile')->plainTextToken;
 
