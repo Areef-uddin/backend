@@ -269,10 +269,14 @@ class EmployeeController extends Controller
             EmployeeBankAccount::where('employee_id', $employee->id)->delete();
             EmployeeSalaryAssignment::where('employee_id', $employee->id)->delete();
             \App\Models\AttendanceRecord::where('employee_id', $employee->id)->delete();
+            \App\Models\AttendanceCorrection::where('employee_id', $employee->id)->delete();
             \App\Models\LeaveRequest::where('employee_id', $employee->id)->delete();
+            \App\Models\LeaveBalance::where('employee_id', $employee->id)->delete();
             \App\Models\PayrollItem::where('employee_id', $employee->id)->delete();
             \App\Models\EmployeeDocument::where('employee_id', $employee->id)->delete();
-            \App\Models\LiveTrackingSession::where('employee_id', $employee->id)->delete();
+            \App\Models\EmployeeShift::where('employee_id', $employee->id)->delete();
+            \App\Models\EmployeeLocation::where('employee_id', $employee->id)->delete();
+            \App\Models\TrackingSession::where('employee_id', $employee->id)->delete();
 
             if ($userId) {
                 \App\Models\JoiningRequest::where('user_id', $userId)->delete();
@@ -322,10 +326,14 @@ class EmployeeController extends Controller
                 EmployeeBankAccount::where('employee_id', $employee->id)->delete();
                 EmployeeSalaryAssignment::where('employee_id', $employee->id)->delete();
                 \App\Models\AttendanceRecord::where('employee_id', $employee->id)->delete();
+                \App\Models\AttendanceCorrection::where('employee_id', $employee->id)->delete();
                 \App\Models\LeaveRequest::where('employee_id', $employee->id)->delete();
+                \App\Models\LeaveBalance::where('employee_id', $employee->id)->delete();
                 \App\Models\PayrollItem::where('employee_id', $employee->id)->delete();
                 \App\Models\EmployeeDocument::where('employee_id', $employee->id)->delete();
-                \App\Models\LiveTrackingSession::where('employee_id', $employee->id)->delete();
+                \App\Models\EmployeeShift::where('employee_id', $employee->id)->delete();
+                \App\Models\EmployeeLocation::where('employee_id', $employee->id)->delete();
+                \App\Models\TrackingSession::where('employee_id', $employee->id)->delete();
 
                 if ($userId) {
                     \App\Models\JoiningRequest::where('user_id', $userId)->delete();
@@ -344,6 +352,9 @@ class EmployeeController extends Controller
 
                 $deletedCount++;
             }
+
+            // Also clean up any orphan/test joining requests
+            \App\Models\JoiningRequest::query()->delete();
 
             AuditLog::log('employee.purged_all', 'Employee', null, "All test employees ({$deletedCount}) were purged from database.");
 
