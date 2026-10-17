@@ -24,7 +24,7 @@ class EmployeeController extends Controller
     public function index(Request $request)
     {
         $query = Employee::with([
-            'user',
+            'user.joiningRequest',
             'department',
             'designation',
             'manager',
@@ -67,7 +67,7 @@ class EmployeeController extends Controller
     public function show($id)
     {
         $employee = Employee::with([
-            'user',
+            'user.joiningRequest',
             'department',
             'designation',
             'manager',

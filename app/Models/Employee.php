@@ -47,6 +47,11 @@ class Employee extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function joiningRequest()
+    {
+        return $this->hasOne(JoiningRequest::class, 'user_id', 'user_id');
+    }
+
     public function department()
     {
         return $this->belongsTo(Department::class);

@@ -79,9 +79,26 @@ class AuthController extends Controller
             'device_name' => 'nullable|string',
         ]);
 
-        $user = User::with(['roles.permissions', 'employee.department', 'employee.designation'])
-            ->where('email', $request->email)
-            ->first();
+        $email = trim(strtolower($request->email));
+        $user = User::with([
+            'roles.permissions',
+            'employee.department',
+            'employee.designation',
+            'employee.bankAccount',
+            'employee.currentSalaryAssignment',
+            'joiningRequest',
+        ])
+        ->where(function ($q) use ($email) {
+            $q->where('email', $email);
+            if ($email === 'admin@starforce.com') {
+                $q->orWhere('email', 'admin@zivbiyt.com');
+            } elseif ($email === 'hr@starforce.com') {
+                $q->orWhere('email', 'hr@zivbiyt.com');
+            } elseif ($email === 'finance@starforce.com') {
+                $q->orWhere('email', 'finance@zivbiyt.com');
+            }
+        })
+        ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
@@ -116,6 +133,7 @@ class AuthController extends Controller
                 'avatar' => $user->avatar,
                 'roles' => $roleNames,
                 'permissions' => $permissions,
+                'joining_request' => $user->joiningRequest,
                 'employee' => $user->employee ? [
                     'id' => $user->employee->id,
                     'employee_code' => $user->employee->employee_code,
@@ -123,6 +141,8 @@ class AuthController extends Controller
                     'designation' => $user->employee->designation?->name,
                     'work_location' => $user->employee->work_location,
                     'joining_date' => $user->employee->joining_date?->format('Y-m-d'),
+                    'bank_account' => $user->employee->bankAccount,
+                    'current_salary_assignment' => $user->employee->currentSalaryAssignment,
                 ] : null,
             ],
         ]);
@@ -133,7 +153,14 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = $request->user()->load(['roles.permissions', 'employee.department', 'employee.designation', 'employee.bankAccount']);
+        $user = $request->user()->load([
+            'roles.permissions',
+            'employee.department',
+            'employee.designation',
+            'employee.bankAccount',
+            'employee.currentSalaryAssignment',
+            'joiningRequest',
+        ]);
 
         $roleNames = $user->roles->pluck('name')->toArray();
         $permissions = $user->roles->flatMap->permissions->pluck('name')->unique()->values()->toArray();
@@ -148,6 +175,7 @@ class AuthController extends Controller
                 'avatar' => $user->avatar,
                 'roles' => $roleNames,
                 'permissions' => $permissions,
+                'joining_request' => $user->joiningRequest,
                 'employee' => $user->employee,
             ],
         ]);

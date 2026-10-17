@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Employee;
 use App\Models\EmployeeBankAccount;
+use App\Models\EmployeeDocument;
 use App\Models\EmployeeSalaryAssignment;
 use App\Models\JoiningRequest;
 use App\Models\SalaryStructure;
@@ -345,16 +346,6 @@ class JoiningRequestController extends Controller
             }
         }
 
-        if ($employee) {
-            $employee->load([
-                'department',
-                'designation',
-                'currentSalaryAssignment.salaryStructure',
-                'bankAccounts',
-                'shift',
-            ]);
-        }
-
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -363,14 +354,7 @@ class JoiningRequestController extends Controller
                 'status' => $status,
                 'is_approved' => $isApproved,
                 'can_check_in' => $isApproved,
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'phone' => $user->phone,
-                    'avatar' => $user->avatar,
-                ],
-                'employee' => $employee,
+                'employee' => $isApproved && $employee ? $employee->load(['department', 'designation']) : null,
             ],
         ]);
     }
@@ -579,6 +563,31 @@ class JoiningRequestController extends Controller
                         'effective_from' => $request->official_joining_date,
                     ]
                 );
+            }
+
+            // 6. Sync User Profile details
+            if ($joining->user) {
+                $joining->user->update([
+                    'name' => $joining->full_name,
+                    'phone' => $joining->phone ?: $joining->user->phone,
+                ]);
+            }
+
+            // 7. Sync KYC Documents to Employee Document Vault
+            if (!empty($joining->uploaded_documents) && is_array($joining->uploaded_documents)) {
+                foreach ($joining->uploaded_documents as $doc) {
+                    EmployeeDocument::updateOrCreate(
+                        [
+                            'employee_id' => $employee->id,
+                            'title' => $doc['title'] ?? 'KYC Document',
+                        ],
+                        [
+                            'document_type' => 'kyc',
+                            'file_path' => $doc['file_url'] ?? ($doc['relative_url'] ?? ''),
+                            'status' => 'verified',
+                        ]
+                    );
+                }
             }
 
             AuditLog::log(
