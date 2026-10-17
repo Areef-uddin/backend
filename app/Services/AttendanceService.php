@@ -48,7 +48,7 @@ class AttendanceService
             $graceTime = $shiftStartTime->copy()->addMinutes($shift->grace_period_minutes);
 
             if ($now->greaterThan($graceTime)) {
-                $lateMinutes = $now->diffInMinutes($shiftStartTime);
+                $lateMinutes = (int) max(0, (int) round($now->diffInSeconds($shiftStartTime) / 60));
                 $status = 'late';
             }
         }
@@ -127,18 +127,20 @@ class AttendanceService
         }
 
         $checkInAt = Carbon::parse($record->check_in_at);
-        $totalMinutes = $now->diffInMinutes($checkInAt);
+        // Ensure totalMinutes is always an integer >= 0, avoiding negative floats
+        $diffSeconds = $now->greaterThan($checkInAt) ? $now->diffInSeconds($checkInAt) : 0;
+        $totalMinutes = (int) max(0, (int) round($diffSeconds / 60));
 
         $shift = $employee->currentShift();
-        $halfDayMinutes = ($shift?->half_day_hours ?? 4) * 60;
-        $fullDayMinutes = ($shift?->full_day_hours ?? 8) * 60;
+        $halfDayMinutes = (int) (($shift?->half_day_hours ?? 4) * 60);
+        $fullDayMinutes = (int) (($shift?->full_day_hours ?? 8) * 60);
 
-        $status = $record->status;
+        $status = $record->status ?? 'present';
         if ($totalMinutes < $halfDayMinutes) {
             $status = 'half_day';
         }
 
-        $overtimeMinutes = max(0, $totalMinutes - $fullDayMinutes);
+        $overtimeMinutes = (int) max(0, $totalMinutes - $fullDayMinutes);
 
         $lat = $data['latitude'] ?? null;
         $lng = $data['longitude'] ?? null;
@@ -150,8 +152,8 @@ class AttendanceService
             'check_out_lng' => $lng,
             'check_out_address' => $address,
             'status' => $status,
-            'total_minutes' => $totalMinutes,
-            'overtime_minutes' => $overtimeMinutes,
+            'total_minutes' => (int) $totalMinutes,
+            'overtime_minutes' => (int) $overtimeMinutes,
         ]);
 
         return $record;

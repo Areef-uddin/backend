@@ -38,6 +38,9 @@ class AttendanceRecord extends Model
         'check_in_lng' => 'float',
         'check_out_lat' => 'float',
         'check_out_lng' => 'float',
+        'total_minutes' => 'integer',
+        'late_minutes' => 'integer',
+        'overtime_minutes' => 'integer',
         'is_verified' => 'boolean',
     ];
 
