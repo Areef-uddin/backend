@@ -31,10 +31,10 @@ RUN composer install \
     --optimize-autoloader \
     --no-scripts
 
-RUN mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+RUN mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/app/public/joining_docs public/storage/joining_docs bootstrap/cache \
+    && chown -R www-data:www-data storage public/storage bootstrap/cache \
+    && chmod -R 775 storage public/storage bootstrap/cache
 
 EXPOSE 80
 
-CMD ["sh", "-c", "php artisan migrate --force || true; php artisan package:discover --ansi || true; apache2-foreground"]
+CMD ["sh", "-c", "php artisan storage:link || true; php artisan migrate --force || true; php artisan package:discover --ansi || true; apache2-foreground"]

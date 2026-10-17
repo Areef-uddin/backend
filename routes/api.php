@@ -39,6 +39,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/joining/register-and-submit', [JoiningRequestController::class, 'registerAndSubmit']);
     Route::get('/joining/options', [JoiningRequestController::class, 'options']);
     Route::post('/joining/upload-doc', [JoiningRequestController::class, 'uploadDocument']);
+    Route::get('/joining/documents/{filename}', [JoiningRequestController::class, 'serveDocument']);
 
     // Authenticated routes
     Route::middleware('auth:sanctum')->group(function () {

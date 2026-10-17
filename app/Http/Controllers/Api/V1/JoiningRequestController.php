@@ -689,19 +689,48 @@ class JoiningRequestController extends Controller
      */
     public function uploadDocument(Request $request)
     {
+        $mimeMap = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
         // Support multipart file upload
         if ($request->hasFile('file')) {
             $file = $request->file('file');
             $originalName = $file->getClientOriginalName();
-            $extension = $file->getClientOriginalExtension() ?: 'jpg';
+            $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
             $sizeInBytes = $file->getSize();
             $mimeType = $file->getMimeType();
+            if (empty($mimeType) || $mimeType === 'application/octet-stream') {
+                $mimeType = $mimeMap[$extension] ?? 'application/octet-stream';
+            }
 
-            $cleanName = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', pathinfo($originalName, PATHINFO_FILENAME));
             $filename = 'doc_' . time() . '_' . substr(md5(uniqid()), 0, 8) . '.' . $extension;
+
+            // Ensure destination directories exist
+            $pubStorageDir = public_path('storage/joining_docs');
+            $appStorageDir = storage_path('app/public/joining_docs');
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($pubStorageDir);
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($appStorageDir);
+
             $file->storeAs('public/joining_docs', $filename);
-            $fullUrl = url('/storage/joining_docs/' . $filename);
-            $relativeUrl = '/storage/joining_docs/' . $filename;
+            @copy($appStorageDir . '/' . $filename, $pubStorageDir . '/' . $filename);
+
+            $content = @file_get_contents($file->getRealPath());
+            $dataUri = null;
+            if ($content && $sizeInBytes < 400000) {
+                $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($content);
+            }
+
+            $baseUrl = 'https://backend-gi0y.onrender.com';
+            $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
+            $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
 
             $sizeStr = $sizeInBytes > 1048576
                 ? round($sizeInBytes / 1048576, 1) . ' MB'
@@ -710,8 +739,10 @@ class JoiningRequestController extends Controller
             return response()->json([
                 'status' => 'success',
                 'file_name' => $originalName,
-                'file_url' => $fullUrl,
-                'relative_url' => $relativeUrl,
+                'file_url' => $streamingUrl,
+                'storage_url' => $storageUrl,
+                'data_uri' => $dataUri,
+                'relative_url' => '/api/v1/joining/documents/' . $filename,
                 'file_size' => $sizeStr,
                 'mime_type' => $mimeType,
                 'uploaded_at' => Carbon::now()->toIso8601String(),
@@ -722,30 +753,48 @@ class JoiningRequestController extends Controller
         if ($request->filled('base64_data')) {
             $base64 = $request->input('base64_data');
             $originalName = $request->input('file_name', 'kyc_document_' . time() . '.jpg');
-            $extension = pathinfo($originalName, PATHINFO_EXTENSION) ?: 'jpg';
+            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION) ?: 'jpg');
 
-            if (preg_match('/^data:([a-zA-Z0-9\/\+]+);base64,/', $base64, $matches)) {
+            if (preg_match('/^data:([a-zA-Z0-9\/\+\-\.]+);base64,/', $base64, $matches)) {
                 $mimeType = $matches[1];
                 $base64 = substr($base64, strpos($base64, ',') + 1);
             } else {
-                $mimeType = 'application/octet-stream';
+                $mimeType = $mimeMap[$extension] ?? 'application/octet-stream';
             }
 
             $decoded = base64_decode($base64);
             $filename = 'doc_' . time() . '_' . substr(md5(uniqid()), 0, 8) . '.' . $extension;
+
+            // Ensure destination directories exist and save to both storage and public
+            $pubStorageDir = public_path('storage/joining_docs');
+            $appStorageDir = storage_path('app/public/joining_docs');
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($pubStorageDir);
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($appStorageDir);
+
             \Illuminate\Support\Facades\Storage::disk('public')->put('joining_docs/' . $filename, $decoded);
-            $fullUrl = url('/storage/joining_docs/' . $filename);
-            $relativeUrl = '/storage/joining_docs/' . $filename;
+            @file_put_contents($pubStorageDir . '/' . $filename, $decoded);
+
             $sizeInBytes = strlen($decoded);
             $sizeStr = $sizeInBytes > 1048576
                 ? round($sizeInBytes / 1048576, 1) . ' MB'
                 : max(1, round($sizeInBytes / 1024, 0)) . ' KB';
 
+            $dataUri = null;
+            if ($sizeInBytes < 400000) {
+                $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($decoded);
+            }
+
+            $baseUrl = 'https://backend-gi0y.onrender.com';
+            $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
+            $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
+
             return response()->json([
                 'status' => 'success',
                 'file_name' => $originalName,
-                'file_url' => $fullUrl,
-                'relative_url' => $relativeUrl,
+                'file_url' => $streamingUrl,
+                'storage_url' => $storageUrl,
+                'data_uri' => $dataUri,
+                'relative_url' => '/api/v1/joining/documents/' . $filename,
                 'file_size' => $sizeStr,
                 'mime_type' => $mimeType,
                 'uploaded_at' => Carbon::now()->toIso8601String(),
@@ -756,5 +805,54 @@ class JoiningRequestController extends Controller
             'status' => 'error',
             'message' => 'No file or base64 data received.',
         ], 400);
+    }
+
+    /**
+     * Public secure streaming route for joining documents & candidate photographs
+     */
+    public function serveDocument($filename)
+    {
+        $cleanFilename = basename($filename);
+        $candidates = [
+            public_path('storage/joining_docs/' . $cleanFilename),
+            storage_path('app/public/joining_docs/' . $cleanFilename),
+            storage_path('app/joining_docs/' . $cleanFilename),
+        ];
+
+        $targetPath = null;
+        foreach ($candidates as $cand) {
+            if (file_exists($cand) && is_file($cand)) {
+                $targetPath = $cand;
+                break;
+            }
+        }
+
+        if (!$targetPath) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Document not found or has expired on server.',
+            ], 404);
+        }
+
+        $ext = strtolower(pathinfo($cleanFilename, PATHINFO_EXTENSION));
+        $mimeTypes = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
+
+        return response()->file($targetPath, [
+            'Content-Type' => $contentType,
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers' => '*',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
     }
 }
