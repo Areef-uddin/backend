@@ -23,6 +23,17 @@ use App\Http\Controllers\Api\V1\JoiningRequestController;
 Route::prefix('v1')->group(function () {
 
     // Public authentication & candidate onboarding routes
+    Route::get('/system/migrate', function () {
+        try {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            return response()->json([
+                'status' => 'success',
+                'output' => \Illuminate\Support\Facades\Artisan::output(),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    });
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/joining/register-and-submit', [JoiningRequestController::class, 'registerAndSubmit']);

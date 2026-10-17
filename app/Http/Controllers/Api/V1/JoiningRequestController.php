@@ -47,6 +47,15 @@ class JoiningRequestController extends Controller
                 'blood_groups' => ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
                 'genders' => ['Male', 'Female', 'Other'],
                 'marital_statuses' => ['Single', 'Married', 'Divorced', 'Widowed'],
+                'referral_sources' => [
+                    'Employee Referral',
+                    'Direct Application / Walk-in',
+                    'Recruitment Partner / Consultant',
+                    'Job Portal (Naukri / Indeed / LinkedIn)',
+                    'Friend / Relative Referral',
+                    'Social Media / Website',
+                    'Other Referral',
+                ],
             ],
         ]);
     }
@@ -153,6 +162,12 @@ class JoiningRequestController extends Controller
             'declaration_date',
             'declaration_place',
             'photo_url',
+            // Referral Option
+            'referral_source',
+            'referred_by_name',
+            'referral_employee_code',
+            'referral_phone',
+            'referral_notes',
         ]);
 
         $data['user_id'] = $user->id;
@@ -281,6 +296,12 @@ class JoiningRequestController extends Controller
             'documents_submitted',
             'uploaded_documents',
             'photo_url',
+            // Referral Option
+            'referral_source',
+            'referred_by_name',
+            'referral_employee_code',
+            'referral_phone',
+            'referral_notes',
             'declaration_accepted',
             'signature_name',
             'declaration_date',
@@ -378,6 +399,8 @@ class JoiningRequestController extends Controller
                   ->orWhere('email', 'like', "%{$search}%")
                   ->orWhere('proposed_employee_code', 'like', "%{$search}%")
                   ->orWhere('approved_employee_code', 'like', "%{$search}%")
+                  ->orWhere('referred_by_name', 'like', "%{$search}%")
+                  ->orWhere('referral_employee_code', 'like', "%{$search}%")
                   ->orWhere('aadhaar_number', 'like', "%{$search}%");
             });
         }

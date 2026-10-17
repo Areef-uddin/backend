@@ -61,6 +61,12 @@ class JoiningRequest extends Model
         'documents_submitted',
         'uploaded_documents',
         'photo_url',
+        // Referral Details
+        'referral_source',
+        'referred_by_name',
+        'referral_employee_code',
+        'referral_phone',
+        'referral_notes',
         // 9. Employee Declaration
         'declaration_accepted',
         'signature_name',
