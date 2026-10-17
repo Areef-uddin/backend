@@ -254,4 +254,111 @@ class EmployeeController extends Controller
             'message' => 'Employee deactivated successfully.',
         ]);
     }
+
+    /**
+     * Delete employee permanently from database
+     */
+    public function destroy($id)
+    {
+        DB::beginTransaction();
+        try {
+            $employee = Employee::findOrFail($id);
+            $userId = $employee->user_id;
+
+            // Delete associated records
+            EmployeeBankAccount::where('employee_id', $employee->id)->delete();
+            EmployeeSalaryAssignment::where('employee_id', $employee->id)->delete();
+            \App\Models\AttendanceRecord::where('employee_id', $employee->id)->delete();
+            \App\Models\LeaveRequest::where('employee_id', $employee->id)->delete();
+            \App\Models\PayrollItem::where('employee_id', $employee->id)->delete();
+            \App\Models\EmployeeDocument::where('employee_id', $employee->id)->delete();
+            \App\Models\LiveTrackingSession::where('employee_id', $employee->id)->delete();
+
+            if ($userId) {
+                \App\Models\JoiningRequest::where('user_id', $userId)->delete();
+            }
+
+            $employee->delete();
+
+            if ($userId) {
+                $user = User::find($userId);
+                if ($user && !$user->hasRole(['Super Admin', 'Admin', 'HR Manager', 'Finance Manager'])) {
+                    $user->tokens()->delete();
+                    $user->roles()->detach();
+                    $user->delete();
+                }
+            }
+
+            AuditLog::log('employee.deleted', 'Employee', $id, "Employee record #{$id} and associated data were permanently deleted.");
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Employee permanently deleted from database.',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete employee: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Purge all test employees from database
+     */
+    public function purgeAll()
+    {
+        DB::beginTransaction();
+        try {
+            $employees = Employee::all();
+            $deletedCount = 0;
+
+            foreach ($employees as $employee) {
+                $userId = $employee->user_id;
+
+                EmployeeBankAccount::where('employee_id', $employee->id)->delete();
+                EmployeeSalaryAssignment::where('employee_id', $employee->id)->delete();
+                \App\Models\AttendanceRecord::where('employee_id', $employee->id)->delete();
+                \App\Models\LeaveRequest::where('employee_id', $employee->id)->delete();
+                \App\Models\PayrollItem::where('employee_id', $employee->id)->delete();
+                \App\Models\EmployeeDocument::where('employee_id', $employee->id)->delete();
+                \App\Models\LiveTrackingSession::where('employee_id', $employee->id)->delete();
+
+                if ($userId) {
+                    \App\Models\JoiningRequest::where('user_id', $userId)->delete();
+                }
+
+                $employee->delete();
+
+                if ($userId) {
+                    $user = User::find($userId);
+                    if ($user && !$user->hasRole(['Super Admin', 'Admin', 'HR Manager', 'Finance Manager'])) {
+                        $user->tokens()->delete();
+                        $user->roles()->detach();
+                        $user->delete();
+                    }
+                }
+
+                $deletedCount++;
+            }
+
+            AuditLog::log('employee.purged_all', 'Employee', null, "All test employees ({$deletedCount}) were purged from database.");
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully removed {$deletedCount} employee(s) from database.",
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to purge employees: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }

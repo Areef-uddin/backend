@@ -46,6 +46,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/employees/{id}', [EmployeeController::class, 'show']);
         Route::patch('/employees/{id}', [EmployeeController::class, 'update']);
         Route::post('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate']);
+        Route::delete('/employees/{id}', [EmployeeController::class, 'destroy']);
+        Route::post('/employees/purge-all', [EmployeeController::class, 'purgeAll']);
 
         Route::get('/departments', [DepartmentController::class, 'index']);
         Route::post('/departments', [DepartmentController::class, 'store']);
