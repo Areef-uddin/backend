@@ -345,6 +345,16 @@ class JoiningRequestController extends Controller
             }
         }
 
+        if ($employee) {
+            $employee->load([
+                'department',
+                'designation',
+                'currentSalaryAssignment.salaryStructure',
+                'bankAccounts',
+                'shift',
+            ]);
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -353,7 +363,14 @@ class JoiningRequestController extends Controller
                 'status' => $status,
                 'is_approved' => $isApproved,
                 'can_check_in' => $isApproved,
-                'employee' => $isApproved && $employee ? $employee->load(['department', 'designation']) : null,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'avatar' => $user->avatar,
+                ],
+                'employee' => $employee,
             ],
         ]);
     }
