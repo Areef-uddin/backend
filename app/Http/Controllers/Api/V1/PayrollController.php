@@ -11,6 +11,7 @@ use App\Models\Payslip;
 use App\Services\PayrollCalculationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PayrollController extends Controller
@@ -261,5 +262,69 @@ class PayrollController extends Controller
             'status' => 'success',
             'data' => $payslip,
         ]);
+    }
+
+    /**
+     * Delete a specific payroll run and its items/payslips
+     */
+    public function destroy($id)
+    {
+        DB::beginTransaction();
+        try {
+            $run = PayrollRun::findOrFail($id);
+
+            // Delete associated payslips and items
+            $itemIds = PayrollItem::where('payroll_run_id', $run->id)->pluck('id');
+            Payslip::whereIn('payroll_item_id', $itemIds)->delete();
+            \App\Models\PayrollItemComponent::whereIn('payroll_item_id', $itemIds)->delete();
+            PayrollItem::where('payroll_run_id', $run->id)->delete();
+
+            $month = $run->payroll_month;
+            $run->delete();
+
+            AuditLog::log('payroll.deleted', 'PayrollRun', $id, "Payroll run for {$month} was deleted.");
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Payroll run for {$month} was deleted successfully.",
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete payroll run: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Purge all payroll runs, items and payslips
+     */
+    public function purgeAll()
+    {
+        DB::beginTransaction();
+        try {
+            Payslip::query()->delete();
+            \App\Models\PayrollItemComponent::query()->delete();
+            PayrollItem::query()->delete();
+            $count = PayrollRun::query()->delete();
+
+            AuditLog::log('payroll.purged_all', 'PayrollRun', null, "All payroll runs ({$count}) were purged.");
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully purged {$count} payroll run(s) and associated records.",
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to purge payroll runs: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

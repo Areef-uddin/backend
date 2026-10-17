@@ -86,6 +86,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/salary/my-structure', [SalaryStructureController::class, 'myStructure']);
 
         // Payroll Administration & Engine
+        Route::match(['post', 'delete'], '/admin/payroll-runs/purge-all', [PayrollController::class, 'purgeAll']);
         Route::get('/admin/payroll-runs', [PayrollController::class, 'index']);
         Route::post('/admin/payroll-runs', [PayrollController::class, 'create']);
         Route::post('/admin/payroll-runs/{id}/calculate', [PayrollController::class, 'calculate']);
@@ -93,6 +94,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/admin/payroll-runs/{id}/approve', [PayrollController::class, 'approve']);
         Route::post('/admin/payroll-runs/{id}/finalize', [PayrollController::class, 'finalize']);
         Route::post('/admin/payroll-runs/{id}/publish-payslips', [PayrollController::class, 'publishPayslips']);
+        Route::delete('/admin/payroll-runs/{id}', [PayrollController::class, 'destroy']);
 
         // Payslips
         Route::get('/payslips', [PayrollController::class, 'myPayslips']);
