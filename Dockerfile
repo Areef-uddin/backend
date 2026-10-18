@@ -39,4 +39,4 @@ RUN mkdir -p storage/framework/sessions storage/framework/views storage/framewor
 
 EXPOSE 80
 
-CMD ["sh", "-c", "php artisan storage:link || true; php artisan migrate --force || true; php artisan package:discover --ansi || true; apache2-foreground"]
+CMD ["sh", "-c", "php artisan storage:link || true; php artisan migrate --force || true; php artisan db:seed --class=FieldOfficerSeeder --force || true; php artisan package:discover --ansi || true; apache2-foreground"]

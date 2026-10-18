@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\PayrollController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\JoiningRequestController;
+use App\Http\Controllers\Api\V1\FieldOfficerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,6 +41,11 @@ Route::prefix('v1')->group(function () {
     Route::get('/joining/options', [JoiningRequestController::class, 'options']);
     Route::post('/joining/upload-doc', [JoiningRequestController::class, 'uploadDocument']);
     Route::get('/joining/documents/{filename}', [JoiningRequestController::class, 'serveDocument']);
+
+    // Field Officers & Referral Engine
+    Route::get('/field-officers', [FieldOfficerController::class, 'index']);
+    Route::get('/field-officers/{code}/referrals', [FieldOfficerController::class, 'referrals']);
+    Route::post('/field-officers/{code}/punch', [FieldOfficerController::class, 'punch']);
 
     // Authenticated routes
     Route::middleware('auth:sanctum')->group(function () {
