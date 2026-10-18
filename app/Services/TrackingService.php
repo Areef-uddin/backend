@@ -87,8 +87,10 @@ class TrackingService
     {
         $today = Carbon::today()->toDateString();
 
-        // Strict query: Only employees who are actively checked in and on duty today
+        // Strict query: Only regular employees who are actively checked in and on duty today
+        // Exclude field officers (SF-FO-*) so only field technicians/employees appear
         $employees = Employee::with(['user', 'department', 'designation'])
+            ->where('employee_code', 'not like', 'SF-FO-%')
             ->whereHas('user', function ($q) {
                 $q->where('status', 'active');
             })
