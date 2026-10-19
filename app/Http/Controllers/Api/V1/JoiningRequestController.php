@@ -65,141 +65,155 @@ class JoiningRequestController extends Controller
      */
     public function registerAndSubmit(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'full_name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
-            'email' => 'required|email|max:255',
-            'password' => 'required|string|min:6',
-            'declaration_accepted' => 'required|boolean',
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'full_name' => 'required|string|max:255',
+                'phone' => 'required|string|max:20',
+                'email' => 'required|email|max:255',
+                'password' => 'required|string|min:6',
+                'declaration_accepted' => 'required|boolean',
+            ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $validator->errors()->first(),
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        $email = strtolower(trim($request->email));
-        $phone = trim($request->phone);
-        $name = trim($request->full_name);
-
-        $user = User::where('email', $email)->first();
-
-        if ($user) {
-            if (!Hash::check($request->password, $user->password)) {
+            if ($validator->fails()) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'An account with this email already exists. Please verify your password.',
+                    'message' => $validator->errors()->first(),
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            if ($request->filled('photo_url')) {
-                $user->update(['avatar' => $request->photo_url]);
+
+            $email = strtolower(trim($request->email));
+            $phone = trim($request->phone);
+            $name = trim($request->full_name);
+
+            // Resolve candidate photograph to a safe HTTPS file URL if provided as base64/data URI
+            $resolvedPhotoUrl = $this->resolvePhotoUrl($request->input('photo_url'), $request);
+            $safeAvatar = ($resolvedPhotoUrl && strlen($resolvedPhotoUrl) <= 255) ? $resolvedPhotoUrl : null;
+
+            $user = User::where('email', $email)->first();
+
+            if ($user) {
+                if (!Hash::check($request->password, $user->password)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'An account with this email already exists. Please verify your password.',
+                    ], 422);
+                }
+                if ($safeAvatar) {
+                    $user->update(['avatar' => $safeAvatar]);
+                }
+            } else {
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'phone' => $phone,
+                    'password' => Hash::make($request->password),
+                    'avatar' => $safeAvatar,
+                    'status' => 'active',
+                ]);
             }
-        } else {
-            $user = User::create([
-                'name' => $name,
-                'email' => $email,
-                'phone' => $phone,
-                'password' => Hash::make($request->password),
-                'avatar' => $request->input('photo_url'),
-                'status' => 'active',
+
+            $empRole = Role::firstOrCreate(
+                ['name' => 'Employee'],
+                ['display_name' => 'Employee', 'description' => 'Employee role']
+            );
+            $user->roles()->syncWithoutDetaching([$empRole->id]);
+
+            $token = $user->createToken('employee-mobile')->plainTextToken;
+
+            $data = $request->only([
+                'proposed_employee_code',
+                'date_of_joining',
+                'proposed_designation',
+                'proposed_department',
+                'branch_location',
+                'reporting_officer',
+                'full_name',
+                'father_spouse_name',
+                'dob',
+                'gender',
+                'marital_status',
+                'blood_group',
+                'phone',
+                'alternate_phone',
+                'email',
+                'aadhaar_number',
+                'pan_number',
+                'emergency_contact_name',
+                'permanent_address',
+                'current_address',
+                'emergency_relationship',
+                'emergency_phone',
+                'emergency_address',
+                'account_holder_name',
+                'bank_name',
+                'branch_name',
+                'account_number',
+                'ifsc_code',
+                'upi_id',
+                'qualification',
+                'institution_board',
+                'passing_year',
+                'percentage_grade',
+                'previous_company_name',
+                'previous_designation',
+                'period_of_employment',
+                'reason_for_leaving',
+                'previous_salary',
+                'documents_submitted',
+                'uploaded_documents',
+                'declaration_accepted',
+                'signature_name',
+                'declaration_date',
+                'declaration_place',
+                'photo_url',
+                // Referral Option
+                'referral_source',
+                'referred_by_name',
+                'referral_employee_code',
+                'referral_phone',
+                'referral_notes',
             ]);
+
+            $data['user_id'] = $user->id;
+            $data['status'] = 'pending';
+            $data = $this->cleanJoiningData($data, $resolvedPhotoUrl);
+
+            $joining = JoiningRequest::where('user_id', $user->id)->first();
+            if ($joining) {
+                $joining->update($data);
+            } else {
+                $joining = JoiningRequest::create($data);
+            }
+
+            try {
+                AuditLog::log('joining.submitted', 'JoiningRequest', $joining->id, "Candidate {$user->name} ({$user->email}) submitted Starforce Joining Form for verification.");
+            } catch (\Throwable $auditEx) {
+                \Log::warning('Failed to write audit log for joining submit: ' . $auditEx->getMessage());
+            }
+
+            $user->load(['roles.permissions']);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Joining form submitted successfully. Your application is under HR review.',
+                'token' => $token,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'roles' => $user->roles->pluck('name')->toArray(),
+                ],
+                'data' => $joining,
+            ], 201);
+        } catch (\Throwable $e) {
+            \Log::error('Error in registerAndSubmit: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to process application: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $empRole = Role::firstOrCreate(
-            ['name' => 'Employee'],
-            ['display_name' => 'Employee', 'description' => 'Employee role']
-        );
-        $user->roles()->syncWithoutDetaching([$empRole->id]);
-
-        $token = $user->createToken('employee-mobile')->plainTextToken;
-
-        $data = $request->only([
-            'proposed_employee_code',
-            'date_of_joining',
-            'proposed_designation',
-            'proposed_department',
-            'branch_location',
-            'reporting_officer',
-            'full_name',
-            'father_spouse_name',
-            'dob',
-            'gender',
-            'marital_status',
-            'blood_group',
-            'phone',
-            'alternate_phone',
-            'email',
-            'aadhaar_number',
-            'pan_number',
-            'emergency_contact_name',
-            'permanent_address',
-            'current_address',
-            'emergency_relationship',
-            'emergency_phone',
-            'emergency_address',
-            'account_holder_name',
-            'bank_name',
-            'branch_name',
-            'account_number',
-            'ifsc_code',
-            'upi_id',
-            'qualification',
-            'institution_board',
-            'passing_year',
-            'percentage_grade',
-            'previous_company_name',
-            'previous_designation',
-            'period_of_employment',
-            'reason_for_leaving',
-            'previous_salary',
-            'documents_submitted',
-            'uploaded_documents',
-            'declaration_accepted',
-            'signature_name',
-            'declaration_date',
-            'declaration_place',
-            'photo_url',
-            // Referral Option
-            'referral_source',
-            'referred_by_name',
-            'referral_employee_code',
-            'referral_phone',
-            'referral_notes',
-        ]);
-
-        $data['user_id'] = $user->id;
-        $data['status'] = 'pending';
-        if (empty($data['declaration_date'])) {
-            $data['declaration_date'] = Carbon::today()->format('Y-m-d');
-        }
-
-        $joining = JoiningRequest::where('user_id', $user->id)->first();
-        if ($joining) {
-            $joining->update($data);
-        } else {
-            $joining = JoiningRequest::create($data);
-        }
-
-        AuditLog::log('joining.submitted', 'JoiningRequest', $joining->id, "Candidate {$user->name} ({$user->email}) submitted Starforce Joining Form for verification.");
-
-        $user->load(['roles.permissions']);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Joining form submitted successfully. Your application is under HR review.',
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'roles' => $user->roles->pluck('name')->toArray(),
-            ],
-            'data' => $joining,
-        ], 201);
     }
 
     /**
@@ -207,138 +221,154 @@ class JoiningRequestController extends Controller
      */
     public function store(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        $validator = Validator::make($request->all(), [
-            'full_name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
-            'email' => 'nullable|email|max:255',
-            'dob' => 'nullable|date',
-            'gender' => 'nullable|string',
-            'marital_status' => 'nullable|string',
-            'blood_group' => 'nullable|string',
-            'father_spouse_name' => 'nullable|string|max:255',
-            'permanent_address' => 'nullable|string',
-            'current_address' => 'nullable|string',
-            'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_relationship' => 'nullable|string|max:100',
-            'emergency_phone' => 'nullable|string|max:20',
-            'aadhaar_number' => 'nullable|string|max:30',
-            'pan_number' => 'nullable|string|max:30',
-            'account_holder_name' => 'nullable|string|max:255',
-            'bank_name' => 'nullable|string|max:255',
-            'account_number' => 'nullable|string|max:50',
-            'ifsc_code' => 'nullable|string|max:20',
-            'declaration_accepted' => 'required|boolean',
-            'signature_name' => 'nullable|string|max:255',
-            'declaration_date' => 'nullable|date',
-            'declaration_place' => 'nullable|string|max:255',
-        ]);
+            $validator = Validator::make($request->all(), [
+                'full_name' => 'required|string|max:255',
+                'phone' => 'required|string|max:20',
+                'email' => 'nullable|email|max:255',
+                'dob' => 'nullable|date',
+                'gender' => 'nullable|string',
+                'marital_status' => 'nullable|string',
+                'blood_group' => 'nullable|string',
+                'father_spouse_name' => 'nullable|string|max:255',
+                'permanent_address' => 'nullable|string',
+                'current_address' => 'nullable|string',
+                'emergency_contact_name' => 'nullable|string|max:255',
+                'emergency_relationship' => 'nullable|string|max:100',
+                'emergency_phone' => 'nullable|string|max:20',
+                'aadhaar_number' => 'nullable|string|max:30',
+                'pan_number' => 'nullable|string|max:30',
+                'account_holder_name' => 'nullable|string|max:255',
+                'bank_name' => 'nullable|string|max:255',
+                'account_number' => 'nullable|string|max:50',
+                'ifsc_code' => 'nullable|string|max:20',
+                'declaration_accepted' => 'required|boolean',
+                'signature_name' => 'nullable|string|max:255',
+                'declaration_date' => 'nullable|date',
+                'declaration_place' => 'nullable|string|max:255',
+            ]);
 
-        if ($validator->fails()) {
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation error: ' . $validator->errors()->first(),
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            // Check if existing
+            $joining = JoiningRequest::where('user_id', $user->id)->first();
+
+            if ($joining && $joining->status === 'approved') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Your joining application has already been approved. Modifications must be requested via HR.',
+                    'data' => $joining,
+                ], 400);
+            }
+
+            // Resolve candidate photograph to a safe HTTPS file URL if provided as base64/data URI
+            $resolvedPhotoUrl = $this->resolvePhotoUrl($request->input('photo_url'), $request);
+            $safeAvatar = ($resolvedPhotoUrl && strlen($resolvedPhotoUrl) <= 255) ? $resolvedPhotoUrl : null;
+
+            $data = $request->only([
+                'proposed_employee_code',
+                'date_of_joining',
+                'proposed_designation',
+                'proposed_department',
+                'branch_location',
+                'reporting_officer',
+                'full_name',
+                'father_spouse_name',
+                'dob',
+                'gender',
+                'marital_status',
+                'blood_group',
+                'phone',
+                'alternate_phone',
+                'email',
+                'aadhaar_number',
+                'pan_number',
+                'emergency_contact_name',
+                'permanent_address',
+                'current_address',
+                'emergency_relationship',
+                'emergency_phone',
+                'emergency_address',
+                'account_holder_name',
+                'bank_name',
+                'branch_name',
+                'account_number',
+                'ifsc_code',
+                'upi_id',
+                'qualification',
+                'institution_board',
+                'passing_year',
+                'percentage_grade',
+                'previous_company_name',
+                'previous_designation',
+                'period_of_employment',
+                'reason_for_leaving',
+                'previous_salary',
+                'documents_submitted',
+                'uploaded_documents',
+                'photo_url',
+                // Referral Option
+                'referral_source',
+                'referred_by_name',
+                'referral_employee_code',
+                'referral_phone',
+                'referral_notes',
+                'declaration_accepted',
+                'signature_name',
+                'declaration_date',
+                'declaration_place',
+            ]);
+
+            $data['user_id'] = $user->id;
+            $data['status'] = 'pending'; // Reset to pending if resubmitting
+            $data = $this->cleanJoiningData($data, $resolvedPhotoUrl);
+
+            if ($joining) {
+                $joining->update($data);
+            } else {
+                $joining = JoiningRequest::create($data);
+            }
+
+            // Keep user name/phone/password in sync
+            if ($request->filled('full_name')) {
+                $user->update(['name' => $request->full_name]);
+            }
+            if ($request->filled('phone')) {
+                $user->update(['phone' => $request->phone]);
+            }
+            if ($request->filled('password') && strlen($request->password) >= 6) {
+                $user->update(['password' => Hash::make($request->password)]);
+            }
+            if ($safeAvatar) {
+                $user->update(['avatar' => $safeAvatar]);
+            }
+
+            try {
+                AuditLog::log('joining_request.submitted', 'JoiningRequest', $joining->id, "User {$user->name} ({$user->id}) submitted employee joining form.");
+            } catch (\Throwable $auditEx) {
+                \Log::warning('Failed to write audit log for joining update: ' . $auditEx->getMessage());
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Employee joining application submitted successfully. Pending HR Admin verification.',
+                'data' => $joining->fresh(['department', 'designation', 'shift']),
+            ], 201);
+        } catch (\Throwable $e) {
+            \Log::error('Error in store joining request: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Validation error',
-                'errors' => $validator->errors(),
-            ], 422);
+                'message' => 'Failed to save application: ' . $e->getMessage(),
+            ], 500);
         }
-
-        // Check if existing
-        $joining = JoiningRequest::where('user_id', $user->id)->first();
-
-        if ($joining && $joining->status === 'approved') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Your joining application has already been approved. Modifications must be requested via HR.',
-                'data' => $joining,
-            ], 400);
-        }
-
-        $data = $request->only([
-            'proposed_employee_code',
-            'date_of_joining',
-            'proposed_designation',
-            'proposed_department',
-            'branch_location',
-            'reporting_officer',
-            'full_name',
-            'father_spouse_name',
-            'dob',
-            'gender',
-            'marital_status',
-            'blood_group',
-            'phone',
-            'alternate_phone',
-            'email',
-            'aadhaar_number',
-            'pan_number',
-            'emergency_contact_name',
-            'permanent_address',
-            'current_address',
-            'emergency_relationship',
-            'emergency_phone',
-            'emergency_address',
-            'account_holder_name',
-            'bank_name',
-            'branch_name',
-            'account_number',
-            'ifsc_code',
-            'upi_id',
-            'qualification',
-            'institution_board',
-            'passing_year',
-            'percentage_grade',
-            'previous_company_name',
-            'previous_designation',
-            'period_of_employment',
-            'reason_for_leaving',
-            'previous_salary',
-            'documents_submitted',
-            'uploaded_documents',
-            'photo_url',
-            // Referral Option
-            'referral_source',
-            'referred_by_name',
-            'referral_employee_code',
-            'referral_phone',
-            'referral_notes',
-            'declaration_accepted',
-            'signature_name',
-            'declaration_date',
-            'declaration_place',
-        ]);
-
-        $data['user_id'] = $user->id;
-        $data['status'] = 'pending'; // Reset to pending if resubmitting
-
-        if (!$data['declaration_date']) {
-            $data['declaration_date'] = Carbon::today()->format('Y-m-d');
-        }
-
-        if ($joining) {
-            $joining->update($data);
-        } else {
-            $joining = JoiningRequest::create($data);
-        }
-
-        // Keep user name/phone/password in sync
-        if ($request->filled('full_name')) {
-            $user->update(['name' => $request->full_name]);
-        }
-        if ($request->filled('phone')) {
-            $user->update(['phone' => $request->phone]);
-        }
-        if ($request->filled('password') && strlen($request->password) >= 6) {
-            $user->update(['password' => Hash::make($request->password)]);
-        }
-
-        AuditLog::log('joining_request.submitted', 'JoiningRequest', $joining->id, "User {$user->name} ({$user->id}) submitted employee joining form.");
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Employee joining application submitted successfully. Pending HR Admin verification.',
-            'data' => $joining->fresh(['department', 'designation', 'shift']),
-        ], 201);
     }
 
     /**
@@ -740,7 +770,7 @@ class JoiningRequestController extends Controller
                 $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($content);
             }
 
-            $baseUrl = config('app.url') ? rtrim(config('app.url'), '/') : ($request->getSchemeAndHttpHost() ?: 'https://backend-gi0y.onrender.com');
+            $baseUrl = $this->resolveBaseUrl($request);
             $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
             $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
 
@@ -796,7 +826,7 @@ class JoiningRequestController extends Controller
                 $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($decoded);
             }
 
-            $baseUrl = config('app.url') ? rtrim(config('app.url'), '/') : ($request->getSchemeAndHttpHost() ?: 'https://backend-gi0y.onrender.com');
+            $baseUrl = $this->resolveBaseUrl($request);
             $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
             $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
 
@@ -817,6 +847,155 @@ class JoiningRequestController extends Controller
             'status' => 'error',
             'message' => 'No file or base64 data received. Supported multipart field names: file, image, photo, document, avatar, or JSON base64_data.',
         ], 400);
+    }
+
+    /**
+     * Resolve the public accessible HTTPS base URL (avoids localhost on Render)
+     */
+    protected function resolveBaseUrl(Request $request): string
+    {
+        $appUrl = config('app.url');
+        if (!empty($appUrl) && !str_contains($appUrl, 'localhost') && !str_contains($appUrl, '127.0.0.1')) {
+            $baseUrl = rtrim($appUrl, '/');
+        } else {
+            $baseUrl = $request->getSchemeAndHttpHost() ?: 'https://backend-gi0y.onrender.com';
+            if (str_starts_with($baseUrl, 'http://') && str_contains($baseUrl, 'onrender.com')) {
+                $baseUrl = 'https://' . substr($baseUrl, 7);
+            }
+        }
+        return $baseUrl;
+    }
+
+    /**
+     * Store candidate photo if provided as data URI or base64 and return clean HTTPS file URL
+     */
+    protected function resolvePhotoUrl(?string $photoUrl, Request $request): ?string
+    {
+        if (empty($photoUrl)) {
+            return null;
+        }
+
+        $photoUrl = trim($photoUrl);
+
+        // If it's already a valid HTTP/HTTPS URL and not a localhost URL, return it directly
+        if (filter_var($photoUrl, FILTER_VALIDATE_URL)) {
+            if (str_contains($photoUrl, 'localhost') || str_contains($photoUrl, '127.0.0.1')) {
+                // Replace localhost with live host
+                $path = parse_url($photoUrl, PHP_URL_PATH);
+                return $this->resolveBaseUrl($request) . $path;
+            }
+            return $photoUrl;
+        }
+
+        // If it's a data URI or base64 string
+        if (str_starts_with($photoUrl, 'data:image') || str_starts_with($photoUrl, 'data:application') || strlen($photoUrl) > 255) {
+            try {
+                $base64 = $photoUrl;
+                $extension = 'jpg';
+                if (preg_match('/^data:image\/([a-zA-Z0-9]+);base64,/', $base64, $matches)) {
+                    $ext = strtolower($matches[1]);
+                    $extension = $ext === 'jpeg' ? 'jpg' : $ext;
+                    $base64 = substr($base64, strpos($base64, ',') + 1);
+                } elseif (str_contains($base64, ';base64,')) {
+                    $base64 = substr($base64, strpos($base64, ',') + 1);
+                }
+
+                $decoded = base64_decode($base64);
+                if ($decoded !== false && strlen($decoded) > 0) {
+                    $filename = 'photo_' . time() . '_' . substr(md5(uniqid()), 0, 8) . '.' . $extension;
+
+                    $pubStorageDir = public_path('storage/joining_docs');
+                    $appStorageDir = storage_path('app/public/joining_docs');
+                    \Illuminate\Support\Facades\File::ensureDirectoryExists($pubStorageDir);
+                    \Illuminate\Support\Facades\File::ensureDirectoryExists($appStorageDir);
+
+                    \Illuminate\Support\Facades\Storage::disk('public')->put('joining_docs/' . $filename, $decoded);
+                    @file_put_contents($pubStorageDir . '/' . $filename, $decoded);
+
+                    $baseUrl = $this->resolveBaseUrl($request);
+                    return $baseUrl . '/api/v1/joining/documents/' . $filename;
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Failed to decode candidate photo data URI: ' . $e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Clean and sanitize candidate payload before database persistence
+     */
+    protected function cleanJoiningData(array $data, ?string $resolvedPhotoUrl = null): array
+    {
+        if (!empty($resolvedPhotoUrl)) {
+            $data['photo_url'] = $resolvedPhotoUrl;
+        }
+
+        // Clean dates: empty strings to null
+        foreach (['dob', 'date_of_joining', 'declaration_date', 'official_joining_date'] as $dateField) {
+            if (isset($data[$dateField]) && empty(trim((string)$data[$dateField]))) {
+                $data[$dateField] = null;
+            }
+        }
+        if (empty($data['declaration_date'])) {
+            $data['declaration_date'] = Carbon::today()->format('Y-m-d');
+        }
+
+        // Clean numeric
+        if (isset($data['previous_salary'])) {
+            $cleanSalary = preg_replace('/[^0-9.]/', '', (string)$data['previous_salary']);
+            $data['previous_salary'] = is_numeric($cleanSalary) ? (float)$cleanSalary : null;
+        }
+
+        // Clean long strings to prevent VARCHAR length overflows in DB
+        $stringLimits = [
+            'proposed_employee_code' => 50,
+            'proposed_designation' => 100,
+            'proposed_department' => 100,
+            'branch_location' => 150,
+            'reporting_officer' => 150,
+            'father_spouse_name' => 150,
+            'emergency_contact_name' => 150,
+            'emergency_relationship' => 100,
+            'emergency_phone' => 20,
+            'account_holder_name' => 150,
+            'bank_name' => 150,
+            'branch_name' => 150,
+            'account_number' => 50,
+            'ifsc_code' => 20,
+            'upi_id' => 100,
+            'passing_year' => 20,
+            'percentage_grade' => 20,
+            'previous_company_name' => 150,
+            'previous_designation' => 100,
+            'period_of_employment' => 100,
+            'signature_name' => 150,
+            'declaration_place' => 100,
+            'referral_source' => 100,
+            'referred_by_name' => 150,
+            'referral_employee_code' => 50,
+            'referral_phone' => 20,
+        ];
+        foreach ($stringLimits as $field => $maxLen) {
+            if (isset($data[$field]) && is_string($data[$field]) && strlen($data[$field]) > $maxLen) {
+                $data[$field] = substr($data[$field], 0, $maxLen);
+            }
+        }
+
+        // Sanitize uploaded_documents JSON array (strip large data_uri to keep payload compact and fast)
+        if (isset($data['uploaded_documents']) && is_array($data['uploaded_documents'])) {
+            $cleanDocs = [];
+            foreach ($data['uploaded_documents'] as $doc) {
+                if (is_array($doc)) {
+                    unset($doc['data_uri']);
+                    $cleanDocs[] = $doc;
+                }
+            }
+            $data['uploaded_documents'] = $cleanDocs;
+        }
+
+        return $data;
     }
 
     /**
