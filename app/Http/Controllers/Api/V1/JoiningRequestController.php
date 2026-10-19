@@ -728,7 +728,7 @@ class JoiningRequestController extends Controller
                 $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($content);
             }
 
-            $baseUrl = 'https://backend-gi0y.onrender.com';
+            $baseUrl = config('app.url') ? rtrim(config('app.url'), '/') : ($request->getSchemeAndHttpHost() ?: 'https://backend-gi0y.onrender.com');
             $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
             $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
 
@@ -784,7 +784,7 @@ class JoiningRequestController extends Controller
                 $dataUri = 'data:' . $mimeType . ';base64,' . base64_encode($decoded);
             }
 
-            $baseUrl = 'https://backend-gi0y.onrender.com';
+            $baseUrl = config('app.url') ? rtrim(config('app.url'), '/') : ($request->getSchemeAndHttpHost() ?: 'https://backend-gi0y.onrender.com');
             $streamingUrl = $baseUrl . '/api/v1/joining/documents/' . $filename;
             $storageUrl = $baseUrl . '/storage/joining_docs/' . $filename;
 

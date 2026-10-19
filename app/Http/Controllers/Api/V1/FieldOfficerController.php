@@ -180,6 +180,21 @@ class FieldOfficerController extends Controller
             $att->is_verified = true;
             $att->save();
 
+            // Automatically start live GPS telemetry session on Admin Radar
+            try {
+                $trackingService = app(\App\Services\TrackingService::class);
+                $trackingService->startSession($emp, $att->id);
+                if ($att->check_in_lat && $att->check_in_lng) {
+                    $trackingService->recordLocation($emp, [
+                        'latitude' => $att->check_in_lat,
+                        'longitude' => $att->check_in_lng,
+                        'accuracy' => 10.0,
+                        'speed' => 0.0,
+                        'battery_level' => 95,
+                    ]);
+                }
+            } catch (\Throwable $te) {}
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Punched IN successfully at ' . $now->format('h:i A'),
@@ -196,6 +211,12 @@ class FieldOfficerController extends Controller
             $att->check_out_lat = $request->input('latitude', 12.926031);
             $att->check_out_lng = $request->input('longitude', 77.676246);
             $att->save();
+
+            // Stop active tracking session
+            try {
+                $trackingService = app(\App\Services\TrackingService::class);
+                $trackingService->stopSession($emp);
+            } catch (\Throwable $te) {}
 
             return response()->json([
                 'status' => 'success',
