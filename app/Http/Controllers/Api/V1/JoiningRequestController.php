@@ -90,23 +90,35 @@ class JoiningRequestController extends Controller
             $resolvedPhotoUrl = $this->resolvePhotoUrl($request->input('photo_url'), $request);
             $safeAvatar = ($resolvedPhotoUrl && strlen($resolvedPhotoUrl) <= 255) ? $resolvedPhotoUrl : null;
 
+            // Look up existing user by email or phone
+            $user = User::where('email', $email)->first();
+            if (!$user && !empty($phone)) {
+                $user = User::where('phone', $phone)->first();
+            }
+
             if ($user) {
                 $isActiveEmployee = Employee::where('user_id', $user->id)
                     ->where('employment_status', 'active')
                     ->exists();
 
-                if (!Hash::check($request->password, $user->password) && $isActiveEmployee) {
+                if ($isActiveEmployee && !Hash::check($request->password, $user->password)) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => 'An active employee account with this email already exists. Please log in with your existing password.',
+                        'message' => 'An active employee account with this email/phone already exists. Please log in with your existing password.',
                     ], 422);
                 }
 
                 $userUpdates = [
                     'name' => $name,
-                    'phone' => $phone,
+                    'email' => $email,
                     'password' => Hash::make($request->password),
                 ];
+                if (!empty($phone)) {
+                    $phoneInUse = User::where('phone', $phone)->where('id', '!=', $user->id)->exists();
+                    if (!$phoneInUse) {
+                        $userUpdates['phone'] = $phone;
+                    }
+                }
                 if ($safeAvatar) {
                     $userUpdates['avatar'] = $safeAvatar;
                 }
@@ -945,6 +957,8 @@ class JoiningRequestController extends Controller
     {
         if (!empty($resolvedPhotoUrl)) {
             $data['photo_url'] = $resolvedPhotoUrl;
+        } elseif (isset($data['photo_url']) && (str_starts_with((string)$data['photo_url'], 'data:') || strlen((string)$data['photo_url']) > 255)) {
+            $data['photo_url'] = null;
         }
 
         // Clean dates: empty strings to null
