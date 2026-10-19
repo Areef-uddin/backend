@@ -700,12 +700,24 @@ class JoiningRequestController extends Controller
             'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
 
-        // Support multipart file upload
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $originalName = $file->getClientOriginalName();
-            $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+        // Support multipart file upload (accept 'file', 'image', 'photo', 'document', 'avatar')
+        $file = $request->file('file')
+            ?? $request->file('image')
+            ?? $request->file('photo')
+            ?? $request->file('document')
+            ?? $request->file('avatar');
+
+        if ($file) {
             $sizeInBytes = $file->getSize();
+            if ($sizeInBytes > 15 * 1024 * 1024) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Uploaded file exceeds the maximum 15MB limit (HTTP 413 Payload Too Large).',
+                ], 413);
+            }
+
+            $originalName = $file->getClientOriginalName() ?: 'upload_' . time() . '.jpg';
+            $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
             $mimeType = $file->getMimeType();
             if (empty($mimeType) || $mimeType === 'application/octet-stream') {
                 $mimeType = $mimeMap[$extension] ?? 'application/octet-stream';
@@ -803,7 +815,7 @@ class JoiningRequestController extends Controller
 
         return response()->json([
             'status' => 'error',
-            'message' => 'No file or base64 data received.',
+            'message' => 'No file or base64 data received. Supported multipart field names: file, image, photo, document, avatar, or JSON base64_data.',
         ], 400);
     }
 
