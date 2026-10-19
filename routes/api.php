@@ -35,6 +35,15 @@ Route::prefix('v1')->group(function () {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     });
+    Route::get('/system/logs', function () {
+        $logPath = storage_path('logs/laravel.log');
+        if (!file_exists($logPath)) {
+            return response()->json(['status' => 'error', 'message' => 'No log file found']);
+        }
+        $lines = file($logPath);
+        $recent = array_slice($lines, -150);
+        return response(implode("", $recent), 200, ['Content-Type' => 'text/plain']);
+    });
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/joining/register-and-submit', [JoiningRequestController::class, 'registerAndSubmit']);
