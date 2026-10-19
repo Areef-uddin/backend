@@ -629,6 +629,12 @@ class JoiningRequestController extends Controller
             // 7. Sync KYC Documents to Employee Document Vault
             if (!empty($joining->uploaded_documents) && is_array($joining->uploaded_documents)) {
                 foreach ($joining->uploaded_documents as $doc) {
+                    $rawFilePath = $doc['file_url'] ?? ($doc['relative_url'] ?? '');
+                    if (!empty($rawFilePath) && (str_contains($rawFilePath, 'localhost') || str_contains($rawFilePath, '127.0.0.1'))) {
+                        $parsedPath = parse_url($rawFilePath, PHP_URL_PATH);
+                        $rawFilePath = $this->resolveBaseUrl($request) . $parsedPath;
+                    }
+
                     EmployeeDocument::updateOrCreate(
                         [
                             'employee_id' => $employee->id,
@@ -636,8 +642,8 @@ class JoiningRequestController extends Controller
                         ],
                         [
                             'document_type' => 'kyc',
-                            'file_path' => $doc['file_url'] ?? ($doc['relative_url'] ?? ''),
-                            'status' => 'verified',
+                            'file_path' => $rawFilePath,
+                            'status' => 'approved',
                         ]
                     );
                 }

@@ -26,6 +26,13 @@ return new class extends Migration
                 }
             });
         }
+
+        // 3. Alter employee_documents.status to string(50) so all status strings are accepted without truncation warnings
+        if (Schema::hasTable('employee_documents') && Schema::hasColumn('employee_documents', 'status')) {
+            Schema::table('employee_documents', function (Blueprint $table) {
+                $table->string('status', 50)->default('approved')->change();
+            });
+        }
     }
 
     public function down(): void
