@@ -456,7 +456,7 @@ class JoiningRequestController extends Controller
             });
         }
 
-        $requests = $query->latest()->get();
+        $requests = $query->latest('updated_at')->get();
 
         $counts = [
             'total' => JoiningRequest::count(),
@@ -975,6 +975,20 @@ class JoiningRequestController extends Controller
         if (isset($data['previous_salary'])) {
             $cleanSalary = preg_replace('/[^0-9.]/', '', (string)$data['previous_salary']);
             $data['previous_salary'] = is_numeric($cleanSalary) ? (float)$cleanSalary : null;
+        }
+
+        // Clean referral: if walk-in or referred_by_name is empty, ensure it's not marked as employee referral
+        $hasReferredByName = !empty(trim((string)($data['referred_by_name'] ?? '')));
+        if (empty($data['referral_source']) || $data['referral_source'] === 'Direct Application / Walk-in' || !$hasReferredByName) {
+            if (empty($data['referral_source']) || $data['referral_source'] === 'Employee Referral') {
+                $data['referral_source'] = 'Direct Application / Walk-in';
+            }
+            if (!$hasReferredByName) {
+                $data['referred_by_name'] = null;
+                $data['referral_employee_code'] = null;
+                $data['referral_phone'] = null;
+                $data['referral_notes'] = null;
+            }
         }
 
         // Clean long strings to prevent VARCHAR length overflows in DB

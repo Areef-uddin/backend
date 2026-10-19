@@ -50,10 +50,17 @@ class FieldOfficerController extends Controller
             $checkInTime = $att && $att->check_in_at ? Carbon::parse($att->check_in_at)->format('h:i A') : null;
             $checkOutTime = $att && $att->check_out_at ? Carbon::parse($att->check_out_at)->format('h:i A') : null;
 
-            // Referrals count
+            // Referrals count - strictly match non-empty code or name
             $referralsQuery = JoiningRequest::where(function ($q) use ($code, $name) {
-                $q->where('referral_employee_code', $code)
-                  ->orWhere('referred_by_name', $name);
+                $q->where(function ($sub) use ($code) {
+                    $sub->whereNotNull('referral_employee_code')
+                        ->where('referral_employee_code', '!=', '')
+                        ->where('referral_employee_code', $code);
+                })->orWhere(function ($sub) use ($name) {
+                    $sub->whereNotNull('referred_by_name')
+                        ->where('referred_by_name', '!=', '')
+                        ->where('referred_by_name', $name);
+                });
             });
 
             $totalReferrals = (clone $referralsQuery)->count();
@@ -103,10 +110,17 @@ class FieldOfficerController extends Controller
         $name = $emp->user ? $emp->user->name : '';
 
         $referrals = JoiningRequest::where(function ($q) use ($code, $name) {
-            $q->where('referral_employee_code', $code)
-              ->orWhere('referred_by_name', $name);
+            $q->where(function ($sub) use ($code) {
+                $sub->whereNotNull('referral_employee_code')
+                    ->where('referral_employee_code', '!=', '')
+                    ->where('referral_employee_code', $code);
+            })->orWhere(function ($sub) use ($name) {
+                $sub->whereNotNull('referred_by_name')
+                    ->where('referred_by_name', '!=', '')
+                    ->where('referred_by_name', $name);
+            });
         })
-        ->latest()
+        ->latest('updated_at')
         ->get();
 
         $today = Carbon::today()->format('Y-m-d');
