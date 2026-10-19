@@ -90,18 +90,27 @@ class JoiningRequestController extends Controller
             $resolvedPhotoUrl = $this->resolvePhotoUrl($request->input('photo_url'), $request);
             $safeAvatar = ($resolvedPhotoUrl && strlen($resolvedPhotoUrl) <= 255) ? $resolvedPhotoUrl : null;
 
-            $user = User::where('email', $email)->first();
-
             if ($user) {
-                if (!Hash::check($request->password, $user->password)) {
+                $isActiveEmployee = Employee::where('user_id', $user->id)
+                    ->where('employment_status', 'active')
+                    ->exists();
+
+                if (!Hash::check($request->password, $user->password) && $isActiveEmployee) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => 'An account with this email already exists. Please verify your password.',
+                        'message' => 'An active employee account with this email already exists. Please log in with your existing password.',
                     ], 422);
                 }
+
+                $userUpdates = [
+                    'name' => $name,
+                    'phone' => $phone,
+                    'password' => Hash::make($request->password),
+                ];
                 if ($safeAvatar) {
-                    $user->update(['avatar' => $safeAvatar]);
+                    $userUpdates['avatar'] = $safeAvatar;
                 }
+                $user->update($userUpdates);
             } else {
                 $user = User::create([
                     'name' => $name,
