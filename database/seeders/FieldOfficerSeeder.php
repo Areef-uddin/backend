@@ -154,7 +154,6 @@ class FieldOfficerSeeder extends Seeder
                     'designation_id' => $foDesig->id,
                     'joining_date' => '2024-01-15',
                     'employment_status' => 'active',
-                    'phone' => $off['phone'],
                 ]
             );
 
